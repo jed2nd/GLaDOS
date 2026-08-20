@@ -62,8 +62,9 @@ the top of this file, and record the consequential ones in the run record.
 # (GLaDOS) Review MR
 
 **Goal**: run one adversarial, multi-persona review pass over an open merge
-request and produce a single validated tally. A clean pass ends the loop; a
-dirty pass hands off to the address-review workflow — forming the loop
+request, produce a single validated tally, and synthesize that tally down to
+its root cause before deciding. A clean pass ends the loop; a dirty pass
+hands off to the address-review workflow — forming the loop
 review-mr ⇄ address-review that runs until every panelist approves or the
 cycle bound stops it. This workflow reads the author's branch and never
 commits to it.
@@ -119,8 +120,10 @@ Rules:
 - Seat the panel and spawn one fresh agent per panelist, in parallel; the
   enabled review-panel behavior defines the roster and spawn mechanics.
 - Each panelist reviews the brief against its mandate and returns a
-  structured verdict object: `{ persona, verdict, findings }`, each finding
-  carrying a severity.
+  structured verdict object: `{ persona, verdict, root-cause, findings }`,
+  each finding carrying a severity and the `root-cause` line naming the cause
+  that lens believes its findings share (step 7 consumes it; a panelist that
+  offers none is still a valid verdict).
 
 ### 6. Tally and validate
 
@@ -166,19 +169,95 @@ validated escalates. The validated per-persona objects are this cycle's
 `review.verdicts`; the HEAD SHA reviewed is the new `review.reviewed-head`;
 the incremented counter is the new `review.cycle`.
 
-### 7. Decide
-- This step produces a `verdict` outcome carrying the per-persona verdicts
-  and the cycle's composed result.
-- **Every panelist `APPROVE` (validated)** → the MR is review-clean; the loop
-  ends. What happens to the MR next is governed by `merge-authority`,
-  resolved from `glados.yaml` — this document states no authority, and this
-  workflow never merges.
-- **Any `REQUEST_CHANGES`** → run the address-review workflow against the
-  open findings, then re-enter this workflow for the next cycle.
+### 7. Root-cause synthesis (mandatory)
+
+This step is not optional and not conditional on the tally: run it on every
+pass, before deciding anything.
+
+## Root-cause synthesis
+
+Two questions no panelist can answer from inside its own lens: one about the
+change, one about the finding set. Both are answered once, over the whole diff
+and every panelist's findings together, and both are answered on **every** pass
+— including a pass where the tally came back clean, which is exactly where a
+shared cause hides. Neither may be skipped: "the change removes the cause" and
+"the findings do not converge" are *answers*, stated with their reasoning.
+Silence is not an answer.
+
+**1. Did the change attack the underlying cause?**
+
+Name the underlying cause in one sentence first — the condition in the code
+that made the reported problem possible, not a restatement of the problem —
+then judge the diff against that sentence:
+
+| What the diff does to the named cause | Reading |
+|---|---|
+| Removes it, or makes the bad state unrepresentable (a constraint, a type, one owner for the invariant) | **root-cause fix** |
+| Leaves it in place and blocks the manifestations that were noticed | **symptom patch** |
+| Leaves it in place because removing it is out of this change's scope, and says so | **scoped deferral** |
+
+- A **symptom patch** whose cause is within this change's reach is a
+  `blocking` finding: cite the cause, and name the change that would remove
+  it.
+- A **scoped deferral** is `advisory` only when the deferral is deliberate and
+  written down — the cause named, the follow-up recorded so it outlives this
+  MR. An undeclared deferral is a symptom patch.
+- The ticket's framing does not settle this. A change that does exactly what
+  the ticket asked can still be a symptom patch: the ticket is where the
+  problem was noticed, not necessarily where it lives.
+
+**2. Does the finding set converge on one cause?**
+
+Cluster the panel's findings by the cause each one implies — ignoring which
+persona raised it and which file it landed in. Several lenses reporting
+several different defects around one bad seam is the signal this check exists
+to catch. Where panelists returned a `root-cause` line, cluster those first;
+where they did not, cluster from the findings themselves. A long finding list
+is a reason to run this check harder, not evidence that the change is merely
+sloppy.
+
+A cluster is real when **one** change to the design would dissolve every
+member of it. Test it that way: name that change, then walk each member and
+say whether it survives. If members survive, they were never one cluster.
+
+- A real cluster of two or more findings becomes **one** consolidated finding:
+  the shared cause, the design change that dissolves it, and the member
+  findings listed beneath it as evidence. It carries the highest severity
+  among its members.
+- The consolidated finding replaces its members as the unit of work — the
+  remediation is that one design change, not one patch per member. The
+  members stay listed so nothing is lost when the change lands.
+- Two clusters, or none, is a normal result. Do not manufacture a shared cause
+  to make a tidy story: an unforced cluster sends the author refactoring
+  around a theory the code does not support. If the findings only rhyme, say
+  they do not converge and leave them separate.
+- Synthesis never lowers a severity and never collapses `blocking` findings
+  into a single advisory suggestion.
+
+
+- Findings this step raises or consolidates are ordinary findings under the
+  severity scale above — re-run the composition rules over the consolidated
+  list before deciding. A `blocking` synthesis finding turns an
+  otherwise-clean tally into `REQUEST_CHANGES`.
+- Both answers, the clusters, and the consolidated list join this cycle's
+  `review.verdicts` and ride in the composed `verdict` outcome. A pass whose
+  record answers neither question is an incomplete pass, not a clean one.
+
+### 8. Decide
+- This step produces a `verdict` outcome carrying the per-persona verdicts,
+  the root-cause synthesis, and the cycle's composed result.
+- **Every panelist `APPROVE` (validated), and no `blocking` synthesis
+  finding** → the MR is review-clean; the loop ends. What happens to the MR
+  next is governed by `merge-authority`, resolved from `glados.yaml` — this
+  document states no authority, and this workflow never merges.
+- **Any `REQUEST_CHANGES`, or a `blocking` synthesis finding** → run the
+  address-review workflow against the **consolidated** findings — a cluster
+  goes over as its one consolidated finding, never as its members — then
+  re-enter this workflow for the next cycle.
 - **Any `ESCALATE`, or a failed validation above** → this run produces an
   `escalation` outcome carrying the open verdicts and stops the loop.
 
-### 8. Handoff
+### 9. Handoff
 - This run produces a `progress` outcome carrying the MR reference, the
   cycle number, and the composed result.
 
@@ -280,10 +359,19 @@ Your job is to find real problems, not to confirm success.
 2. Review strictly through your persona's lens. Cite file + line per finding.
 3. Classify each finding and choose your verdict using ONLY the severity
    scale, verdict words, and composition rules in the brief.
-4. Return the structured verdict object:
-   { persona, verdict, findings: [{ severity, file, line, description }] }
+4. Before returning, step back from the individual findings: in one line,
+   name the underlying cause you believe they share — the condition in the
+   code that made them possible, not a restatement of the symptoms. Write
+   `none` when they share no cause, or when you found nothing.
+5. Return the structured verdict object:
+   { persona, verdict, root-cause, findings: [{ severity, file, line,
+     description }] }
    Report an explicit empty findings list rather than omitting the field.
 ```
+
+The `root-cause` line is a hypothesis from one lens, not a verdict. It binds
+nothing on its own: it is raw material for whatever root-cause synthesis the
+workflow this panel serves runs over the panel as a whole.
 
 ### Collect and validate
 
@@ -296,6 +384,10 @@ Validation happens at the tally, not on trust in the panelist prompt:
 - Check each object against the composition rules: recompute the verdict its
   findings imply. Where a panelist's self-declared verdict disagrees with its
   own findings, the composition rules win.
+- A missing, empty, or `none` `root-cause` line is **not** a malformed
+  verdict and never escalates — it means that lens offered no hypothesis, and
+  the synthesis clusters that panelist's findings from their descriptions
+  instead. Only the verdict word and the findings list govern validity.
 - The validated objects are the panel's output. They do not become outcomes
   one per persona: tallying them into the single composed `verdict` outcome —
   the per-persona verdicts plus the cycle's composed result — and making the

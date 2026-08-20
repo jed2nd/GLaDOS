@@ -294,10 +294,19 @@ Your job is to find real problems, not to confirm success.
 2. Review strictly through your persona's lens. Cite file + line per finding.
 3. Classify each finding and choose your verdict using ONLY the severity
    scale, verdict words, and composition rules in the brief.
-4. Return the structured verdict object:
-   { persona, verdict, findings: [{ severity, file, line, description }] }
+4. Before returning, step back from the individual findings: in one line,
+   name the underlying cause you believe they share — the condition in the
+   code that made them possible, not a restatement of the symptoms. Write
+   `none` when they share no cause, or when you found nothing.
+5. Return the structured verdict object:
+   { persona, verdict, root-cause, findings: [{ severity, file, line,
+     description }] }
    Report an explicit empty findings list rather than omitting the field.
 ```
+
+The `root-cause` line is a hypothesis from one lens, not a verdict. It binds
+nothing on its own: it is raw material for whatever root-cause synthesis the
+workflow this panel serves runs over the panel as a whole.
 
 ### Collect and validate
 
@@ -310,6 +319,10 @@ Validation happens at the tally, not on trust in the panelist prompt:
 - Check each object against the composition rules: recompute the verdict its
   findings imply. Where a panelist's self-declared verdict disagrees with its
   own findings, the composition rules win.
+- A missing, empty, or `none` `root-cause` line is **not** a malformed
+  verdict and never escalates — it means that lens offered no hypothesis, and
+  the synthesis clusters that panelist's findings from their descriptions
+  instead. Only the verdict word and the findings list govern validity.
 - The validated objects are the panel's output. They do not become outcomes
   one per persona: tallying them into the single composed `verdict` outcome —
   the per-persona verdicts plus the cycle's composed result — and making the
