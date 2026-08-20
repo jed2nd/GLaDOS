@@ -29,6 +29,7 @@ Single-source rule partials, inlined where a core includes them via
 
 - `verdicts.md` — the one severity scale and verdict vocabulary, with composition rules.
 - `panel-roster.md` — how the review panel is seated (standing lenses + manifest + feature personas).
+- `root-cause.md` — the mandatory post-tally synthesis: did the change remove the cause, and do the findings converge on one?
 - `loop-bounds.md` — the bounded-loop rule; bound values resolve from manifest params.
 - `git-conventions.md` — commit/git defaults, subordinate to the project's own agent instructions.
 - `branch-naming.md` — branch names and MR targets resolve from `glados.yaml` → `branching:`.

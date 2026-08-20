@@ -886,6 +886,50 @@ class TestManifestTokenAttacks(unittest.TestCase):
         self.assertIn("intent", out)
 
 
+class TestRootCauseSynthesis(unittest.TestCase):
+
+    def test_synthesis_step_compiled_into_review_mr(self):
+        # The postamble is mandatory and unconditional: it must land in the
+        # compiled review-mr text, with both checks and the panel's root-cause
+        # field, on a stock manifest.
+        t = make_target(read(EXAMPLE))
+        rc, out = install("direct", t)
+        self.assertEqual(rc, 0, out)
+        core = read(t / "product-knowledge" / "glados" / "review-mr.md")
+        self.assertIn("Root-cause synthesis (mandatory)", core)
+        self.assertIn("Did the change attack the underlying cause?", core)
+        self.assertIn("Does the finding set converge on one cause?", core)
+        self.assertIn("root-cause", core)
+
+    def test_synthesis_runs_before_the_decide_step(self):
+        # Ordering is the whole point: synthesize, then decide. A compile that
+        # puts the decision first has lost the postamble.
+        t = make_target(read(EXAMPLE))
+        rc, out = install("direct", t)
+        self.assertEqual(rc, 0, out)
+        core = read(t / "product-knowledge" / "glados" / "review-mr.md")
+        self.assertLess(core.index("Root-cause synthesis (mandatory)"),
+                        core.index("### 8. Decide"))
+
+    def test_address_review_consumes_the_synthesis(self):
+        # The synthesis must not land inert: the fix half is told to treat a
+        # consolidated cluster as one design change.
+        t = make_target(read(EXAMPLE))
+        rc, out = install("direct", t)
+        self.assertEqual(rc, 0, out)
+        core = read(t / "product-knowledge" / "glados" / "address-review.md")
+        self.assertIn("root-cause synthesis", core)
+
+    def test_synthesis_introduces_no_new_verdict_vocabulary(self):
+        # One severity scale, one verdict vocabulary - the synthesis reuses
+        # them rather than inventing a third tier or a fourth verdict word.
+        body = read(REPO / "src" / "vocabulary" / "root-cause.md")
+        for invented in ("CONVERGED", "ROOT_CAUSE", "SYMPTOM", "structural`"):
+            self.assertNotIn(invented, body)
+        self.assertIn("`blocking`", body)
+        self.assertIn("`advisory`", body)
+
+
 class TestSourceTreeAttacks(unittest.TestCase):
 
     def test_include_cycle_fatal_names_cycle(self):

@@ -44,8 +44,10 @@ keys:
   review.verdicts:
     home: run-record
     doc: >
-      The tallied per-persona verdict objects for the latest cycle. Written by
-      review-mr; read by address-review.
+      The tallied per-persona verdict objects for the latest cycle, together
+      with that cycle's root-cause synthesis - the underlying-cause reading of
+      the change and any consolidated finding clusters. Written by review-mr;
+      read by address-review.
   epic.progress:
     home: ledger
     doc: >

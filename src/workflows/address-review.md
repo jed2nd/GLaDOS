@@ -46,6 +46,16 @@ pass. This is the fix half of the review loop
 - Fix the **root cause**, not the symptom. Prefer making the bad state
   impossible (a constraint, a type) over defensively tolerating it. A review
   finding is a real defect until proven otherwise.
+- **Honor the cycle's root-cause synthesis**, which rides with
+  `review.verdicts`. Where the panel consolidated a cluster of findings into
+  one, the unit of work is the single design change it names — make that
+  change, then check each member off against the result. Do not reopen the
+  cluster into one patch per member. If the design change leaves a member
+  standing, that member is a separate finding again — say so, and fix it on
+  its own.
+- Where the synthesis read the change as a **symptom patch**, patching the
+  listed symptoms does not resolve it: remove the cause it named, or record
+  the disagreement and escalate. Do not spend a cycle re-fixing symptoms.
 
 ### 3. Fix from the main agent
 - Apply the fixes yourself, as one coherent edit set — do **not** fan out to
