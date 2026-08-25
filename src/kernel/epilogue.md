@@ -37,11 +37,17 @@ the record rather than omitting it.
    platform supports it) rather than one aggregated comment; `summary:`
    controls whether a composed-verdict comment is also posted. `progress`
    always lands in the ledger at minimum.
-   - **Delivery is verified, not assumed.** If a bound sink is unreachable or
-     the post fails but the outcome still reached at least one team-visible
-     sink, record the failed sink in the run record as a warning and continue.
-     If it reached **no** team-visible sink, emit an `escalation` — never
-     silently drop an outcome.
+   - **Delivery is verified, not assumed.** Every sink bound to an outcome
+     type must actually receive it. If a bound sink is unreachable or the post
+     fails, record the failure in the run record and emit an `escalation`.
+     Delivery to a different sink does not cover the one that failed: a
+     verdict that never reached the MR leaves the change looking unreviewed,
+     however many other sinks got a copy. Never silently drop an outcome.
+   - Reaching only the ledger is not itself a failure. `progress`, `decision`,
+     and `observation` may be bound ledger-only by design, as may any outcome
+     type in a project whose manifest confesses `visibility-acknowledged:
+     ledger-only`. Escalate on a sink that failed, never on a binding the
+     manifest deliberately declared.
 6. **Release** anything held: leases (when enabled) and other in-flight
    markers — and delete `.glados/runs/current` unconditionally (the preamble
    always sets it; a leftover marker makes the run-record guard hooks block

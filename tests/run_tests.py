@@ -930,6 +930,97 @@ class TestRootCauseSynthesis(unittest.TestCase):
         self.assertIn("`advisory`", body)
 
 
+class TestSinkConfig(unittest.TestCase):
+    """Sink bodies are freeform config the agent interprets, but a key that
+    cannot possibly do anything must fail the install instead of resolving to
+    a silent no-op, and a multi-line body must not tear apart the assembly
+    report's table."""
+
+    MULTILINE = (
+        "sinks:\n"
+        "  mr-comment:\n"
+        "    grouping: aggregate\n"
+        "    voice: |\n"
+        "      Lead with the verdict.\n"
+        "      One finding per paragraph | even with a pipe in it.\n"
+        "\n"
+        "      No praise, no emoji headers.\n"
+    )
+
+    def _manifest(self, extra=""):
+        return read(EXAMPLE) + "\n" + extra
+
+    def test_team_visible_rejected_on_builtin(self):
+        # BUILTIN_SINKS fixes a built-in's visibility and _sink_is_team_visible
+        # never reads the body for one, so accepting the key would install
+        # clean and change nothing.
+        t = make_target(self._manifest(
+            "sinks:\n  mr-comment:\n    team-visible: false\n"))
+        rc, out = install("direct", t)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("mr-comment", out)
+        self.assertIn("built-in", out)
+
+    def test_team_visible_honored_on_a_declared_sink(self):
+        # The same key on a sink the project owns is real config, not a no-op:
+        # reject the built-in case without over-rejecting this one.
+        t = make_target(self._manifest(
+            "sinks:\n  audit-log:\n    team-visible: false\n"))
+        rc, out = install("direct", t)
+        self.assertEqual(rc, 0, out)
+        report = read(t / ".glados" / "assembly-report.md")
+        self.assertIn("audit-log", report)
+        self.assertIn("no (record-only)", report)
+
+    def test_multiline_body_keeps_the_report_table_intact(self):
+        t = make_target(self._manifest(self.MULTILINE))
+        rc, out = install("direct", t)
+        self.assertEqual(rc, 0, out)
+        report = read(t / ".glados" / "assembly-report.md")
+        section = self._sinks_section(report)
+        header = next(i for i, l in enumerate(section)
+                      if l.startswith("| Sink |"))
+        # The section's own prose must state the rule the epilogue implements,
+        # in full: this sentence spans several string literals and a partial
+        # edit leaves a grammatical-looking half-sentence behind.
+        intro = " ".join(l for l in section[:header] if l.strip())
+        self.assertIn("a bound sink that fails to receive its outcome escalates",
+                      intro)
+        self.assertNotIn("reaches no team-visible sink", intro)
+        rows = [l for l in section[header:] if l.strip()]
+        # A raw newline in a cell ends the ROW: the body's remaining lines
+        # would land here as non-table text.
+        for line in rows:
+            self.assertTrue(line.startswith("|"),
+                            f"torn table — stray line in the Sinks table: {line!r}")
+        mr = [l for l in rows if l.startswith("| mr-comment ")]
+        self.assertEqual(len(mr), 1, rows)
+        self.assertIn("lines)", mr[0], "multi-line body must be summarized")
+        self.assertNotIn("No praise", mr[0], "body must not be inlined")
+
+    def test_compiled_core_escalates_on_a_failed_sink(self):
+        # The compiled core is the artifact the agent actually reads; a bound
+        # sink that fails must escalate, never downgrade to a warning because
+        # some other sink got a copy.
+        t = make_target()
+        rc, out = install("direct", t)
+        self.assertEqual(rc, 0, out)
+        core = read(t / "product-knowledge" / "glados" / "review-mr.md")
+        self.assertIn("emit an `escalation`", core)
+        self.assertNotIn("as a warning and continue", core)
+
+    @staticmethod
+    def _sinks_section(report: str) -> list:
+        lines = report.splitlines()
+        start = lines.index("## Sinks")
+        out = []
+        for line in lines[start + 1:]:
+            if line.startswith("## "):
+                break
+            out.append(line)
+        return out
+
+
 class TestSourceTreeAttacks(unittest.TestCase):
 
     def test_include_cycle_fatal_names_cycle(self):

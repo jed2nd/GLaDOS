@@ -50,7 +50,7 @@ from pathlib import Path
 # 1. CONSTANTS
 # =============================================================================
 
-VERSION = "2.2.0"
+VERSION = "2.2.1"
 
 # The fifteen v2 cores, in canonical (pipeline-ish) order. The compiler touches
 # ONLY these — other .md files under src/workflows are v1 leftovers deleted at
@@ -957,10 +957,20 @@ def run_type_checks(source: Source, comp: Compilation) -> list[str]:
         if cfg is not None and not isinstance(cfg, dict):
             errors.append(f"sinks.{name}: must be a mapping (e.g. 'channel: ...') "
                           f"or empty — got {cfg!r}")
-        elif isinstance(cfg, dict) and "team-visible" in cfg \
-                and not isinstance(cfg["team-visible"], bool):
-            errors.append(f"sinks.{name}.team-visible: must be true or false — "
-                          f"got {cfg['team-visible']!r}")
+        elif isinstance(cfg, dict) and "team-visible" in cfg:
+            # A built-in's visibility is fixed in BUILTIN_SINKS, and
+            # _sink_is_team_visible never consults the body for one. Accepting
+            # the key would install clean and change nothing — precisely the
+            # silent no-op this checker exists to prevent. Say so instead.
+            if name in BUILTIN_SINKS:
+                fixed = "team-visible" if BUILTIN_SINKS[name] else "record-only"
+                errors.append(f"sinks.{name}.team-visible: '{name}' is a built-in "
+                              f"sink and its visibility is fixed ({fixed}); the "
+                              f"key would be ignored — remove it, or declare a "
+                              f"differently-named sink you own")
+            elif not isinstance(cfg["team-visible"], bool):
+                errors.append(f"sinks.{name}.team-visible: must be true or false — "
+                              f"got {cfg['team-visible']!r}")
     declared = _declared_sinks(r)
     # channels: the outcome-type on the left must be real; each sink on the
     # right must be DECLARED (built-in or named in sinks:). A typo is silent
@@ -1167,8 +1177,8 @@ def build_assembly_report(source: Source, comp: Compilation) -> str:
     out.append("Where outcomes land, and whether delivery counts as team-visible. "
                "Built-ins are always available; a project may declare more under "
                "`sinks:` (bodies are freeform config the agent interprets at run "
-               "time). Runtime delivery is verified — an outcome that reaches no "
-               "team-visible sink escalates.")
+               "time). Runtime delivery is verified — a bound sink that fails "
+               "to receive its outcome escalates, whatever the other sinks got.")
     out.append("")
     out.append("| Sink | Team-visible | Config | Source |")
     out.append("|------|--------------|--------|--------|")
@@ -1239,6 +1249,22 @@ def build_assembly_report(source: Source, comp: Compilation) -> str:
     return "\n".join(out)
 
 
+def _fmt_cell(s: str) -> str:
+    """One markdown-table-safe cell. A pipe ends the cell early and a newline
+    ends the ROW, so a multi-line value — the normal shape of a freeform sink
+    body the agent interprets at run time — has to be summarized rather than
+    inlined, or it tears the table apart. Single-line values pass through with
+    only pipes escaped, so a long-but-flat entry like optimize-for still reads
+    in full."""
+    lines = s.splitlines()
+    if len(lines) <= 1:
+        return s.replace("|", "\\|")
+    head = lines[0].strip().replace("|", "\\|")
+    if len(head) > 60:
+        head = head[:60].rstrip()
+    return f"{head}… ({len(lines)} lines)"
+
+
 def _fmt(val) -> str:
     if isinstance(val, bool):
         return "true" if val else "false"
@@ -1246,6 +1272,8 @@ def _fmt(val) -> str:
         return "[" + ", ".join(str(v) for v in val) + "]"
     if isinstance(val, dict):
         return "{" + ", ".join(f"{k}: {_fmt(v)}" for k, v in val.items()) + "}"
+    if isinstance(val, str):
+        return _fmt_cell(val)
     return str(val)
 
 
