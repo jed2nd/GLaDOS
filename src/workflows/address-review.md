@@ -31,9 +31,13 @@ pass. This is the fix half of the review loop
 
 <!-- glados:include vocabulary/verdicts.md -->
 
-- Collect every open finding across all panelists, from the verdict objects
-  and their published copies. **Dedupe** — several personas often flag the
-  same root cause; merge duplicates into one finding that credits each lens.
+- Start from the cycle's **consolidated** finding list, which rides with
+  `review.verdicts`. The root-cause synthesis has already clustered the
+  panel's findings, and a cluster arrives as the single consolidated finding
+  it produced — never re-expand one into its members in order to re-dedupe
+  it. **Dedupe** only the findings the synthesis left standalone, from the
+  verdict objects and their published copies: several personas often flag the
+  same root cause; merge those into one finding that credits each lens.
 - **Rank** the consolidated list by the severity tiers above, `blocking`
   first.
 - For each finding decide: **fix now**, or **reasoned exception** — a finding
