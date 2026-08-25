@@ -21,7 +21,8 @@ phase: evolving
 
 # Outcome-type -> sink bindings. An outcome type emitted by an enabled
 # workflow with no team-visible sink is an install error unless explicitly
-# confessed (visibility-acknowledged).
+# confessed (visibility-acknowledged); `progress`, `decision`, and
+# `observation` may be ledger-only with no confession.
 channels:
   progress:    [ledger]
   verdict:     [mr-comment]
@@ -36,8 +37,10 @@ channels:
 # install (typo safety). Sink bodies are freeform config the AGENT interprets at
 # run time against your platform and conventions — the compiler never parses
 # them. A declared sink is team-visible by default; set `team-visible: false`
-# for a record-only sink. Delivery is verified at run time: an outcome that
-# reaches no team-visible sink escalates. Examples (uncomment to use):
+# for a record-only sink you declare here — the key is rejected on a built-in,
+# whose visibility is fixed. Delivery is verified at run time: a bound sink
+# that fails to receive its outcome escalates, whatever the other sinks got.
+# Examples (uncomment to use):
 # sinks:
 #   mr-comment:
 #     grouping: per-persona     # aggregate | per-persona | per-finding
