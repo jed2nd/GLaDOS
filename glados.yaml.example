@@ -1,6 +1,7 @@
 # glados.yaml — the one project-owned GLaDOS configuration file.
 # Copy to your repo root as `glados.yaml` and edit. Lane-2 keys (channels,
-# decisions, merge-authority, params, personas) are read LIVE at run time —
+# decisions, merge-authority, params, personas, sinks) are read LIVE at run
+# time —
 # editing them changes agent behavior on the next run, no reinstall. Structural
 # keys (workflows' module lists, phase) take effect at `glados.py install`,
 # which stamps a manifest hash into the compiled output; `glados.py doctor`
@@ -36,10 +37,11 @@ channels:
 # them in channels: above; a channels: entry naming an undeclared sink fails the
 # install (typo safety). Sink bodies are freeform config the AGENT interprets at
 # run time against your platform and conventions — the compiler never parses
-# them. A declared sink is team-visible by default; set `team-visible: false`
-# for a record-only sink you declare here — the key is rejected on a built-in,
-# whose visibility is fixed. Delivery is verified at run time: a bound sink
-# that fails to receive its outcome escalates, whatever the other sinks got.
+# them. A sink you declare here MUST state `team-visible: true` or
+# `team-visible: false`; the key is rejected on a built-in, whose visibility is
+# fixed. Delivery is verified at run time: a bound sink that fails to receive
+# its outcome escalates, whatever the other sinks got, and all of a run's
+# delivery failures ride in one escalation that is never itself escalated.
 # Examples (uncomment to use):
 # sinks:
 #   mr-comment:
