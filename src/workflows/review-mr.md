@@ -58,6 +58,14 @@ commits to it.
 
 <!-- glados:include vocabulary/verdicts.md -->
 
+- **Refute every `blocking` finding before counting it.** The enabled
+  review-panel behavior defines the refutation stage; run it here, before the
+  validation below and long before the decision. A finding a fresh refuter
+  breaks is dropped, with its reasoning recorded; one it cannot break stands
+  as written; one that resolves neither way stands at its severity, reworded
+  as the question it actually is. Everything below runs over the surviving
+  list.
+
 The tally is a validation step, not a collection step. Check every returned
 object before counting it:
 

@@ -31,6 +31,8 @@ pass. This is the fix half of the review loop
 
 <!-- glados:include vocabulary/verdicts.md -->
 
+<!-- glados:include vocabulary/root-cause.md -->
+
 - Start from the cycle's **consolidated** finding list, which rides with
   `review.verdicts`. The root-cause synthesis has already clustered the
   panel's findings, and a cluster arrives as the single consolidated finding
@@ -38,6 +40,13 @@ pass. This is the fix half of the review loop
   it. **Dedupe** only the findings the synthesis left standalone, from the
   verdict objects and their published copies: several personas often flag the
   same root cause; merge those into one finding that credits each lens.
+- **When `review.verdicts` carries no synthesis**, consolidate here instead of
+  guessing: collect every open finding across all panelists and dedupe them
+  yourself, then say in the run record that you did so and why. This is the
+  normal shape for a review that predates the synthesis step, for a review a
+  human wrote by hand, and for records written by an older install. An absent
+  synthesis is a stated condition with a stated response — never a reason to
+  stop, and never a silent fallback to a different behavior.
 - **Rank** the consolidated list by the severity tiers above, `blocking`
   first.
 - For each finding decide: **fix now**, or **reasoned exception** — a finding

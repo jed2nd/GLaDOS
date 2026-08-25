@@ -50,7 +50,7 @@ from pathlib import Path
 # 1. CONSTANTS
 # =============================================================================
 
-VERSION = "2.2.1"
+VERSION = "2.2.2"
 
 # The fifteen v2 cores, in canonical (pipeline-ish) order. The compiler touches
 # ONLY these — other .md files under src/workflows are v1 leftovers deleted at
@@ -883,13 +883,19 @@ def _declared_sinks(r: Resolved) -> set[str]:
 def _sink_is_team_visible(name: str, r: Resolved) -> bool:
     """Does delivery to this sink satisfy the team-visibility invariant? A
     built-in keeps its fixed classification (ledger is the only quiet one); a
-    team-declared sink is team-visible unless it sets `team-visible: false`."""
+    project-declared sink must say so itself.
+
+    Fails CLOSED. run_type_checks requires `team-visible` on every declared
+    sink, so a missing key here means the manifest did not pass checks (a
+    --report-only run, or a malformed body reported separately) — and the safe
+    reading of "we do not know whether anyone sees this" is that nobody
+    does."""
     if name in BUILTIN_SINKS:
         return BUILTIN_SINKS[name]
     cfg = _sinks_map(r).get(name)
     if not isinstance(cfg, dict):
-        return True   # malformed body is reported elsewhere; default to visible
-    return cfg.get("team-visible", True) is not False
+        return False
+    return cfg.get("team-visible") is True
 
 
 def run_type_checks(source: Source, comp: Compilation) -> list[str]:
@@ -971,6 +977,18 @@ def run_type_checks(source: Source, comp: Compilation) -> list[str]:
             elif not isinstance(cfg["team-visible"], bool):
                 errors.append(f"sinks.{name}.team-visible: must be true or false — "
                               f"got {cfg['team-visible']!r}")
+        elif name not in BUILTIN_SINKS:
+            # The dangerous direction. Opening the sink vocabulary means a
+            # name nobody recognises can be bound in channels:, and a body
+            # that says nothing about visibility used to satisfy the
+            # team-visibility invariant by default — so an outcome no human
+            # ever sees passed the check that exists to prevent exactly that.
+            # A project-declared sink states its visibility or it does not
+            # install.
+            errors.append(f"sinks.{name}: a project-declared sink must state "
+                          f"`team-visible: true` or `team-visible: false` — "
+                          f"without it, binding an outcome to '{name}' would "
+                          f"satisfy the team-visibility check by default")
     declared = _declared_sinks(r)
     # channels: the outcome-type on the left must be real; each sink on the
     # right must be DECLARED (built-in or named in sinks:). A typo is silent
@@ -1185,8 +1203,11 @@ def build_assembly_report(source: Source, comp: Compilation) -> str:
     declared_sinks = _sinks_map(r)
     for name in sorted(BUILTIN_SINKS):
         vis = "yes" if _sink_is_team_visible(name, r) else "no (record-only)"
+        # A built-in the manifest configured is still explicitly configured;
+        # reporting it as plain "built-in" hides the one row a reader checks.
+        src = "built-in (explicit config)" if declared_sinks.get(name) else "built-in"
         out.append(f"| {name} | {vis} | {_fmt(declared_sinks.get(name) or {})} | "
-                   f"built-in |")
+                   f"{src} |")
     for name in sorted(declared_sinks):
         if name in BUILTIN_SINKS:
             continue
@@ -1766,6 +1787,16 @@ def vendor_plan(source: Source, manifest_hash: str, report: str) -> dict:
         src = source.root / "ci" / name
         if src.exists():
             plan[f".glados/ci/{name}"] = ("bytes", src.read_bytes())
+    # Vendor the SDA standard/profile docs. scaffold_sda copies these into a
+    # consuming project, and without them `install` on an `sda: true` repo
+    # dies with "pass --source <a full glados checkout>" — which made the
+    # vendored tree self-contained for `check` but not for `install`, so the
+    # one command a consumer needs to pick up a re-vendor could not be run
+    # from the repo it was vendored into.
+    sda_docs = source.root / "docs" / "standards"
+    if sda_docs.is_dir():
+        for f in sorted(sda_docs.glob("sda-*.md")):
+            plan[f".glados/docs/standards/{f.name}"] = ("bytes", f.read_bytes())
     # Vendor the run-record guard scripts (and the agy hooks block of record)
     # so emitted hook references resolve.
     for name in VENDORED_HOOKS:
@@ -2297,9 +2328,21 @@ def cmd_check(args) -> int:
 
     modes = _detect_modes(target)
     if not modes:
-        problems.append(f"no GLaDOS install detected under {target}")
+        # Deliberately fatal even under --report-only. Every install mode this
+        # detects lands in a directory a project may gitignore, so in CI, on a
+        # fresh clone, "no install detected" is the normal shape of a repo
+        # whose compiled artifacts never travel — and returning 0 for it turns
+        # the drift check, the manifest-hash check, and every type check into
+        # a job that passes without reading anything. A checker that cannot
+        # see the thing it checks reports that, loudly, in both modes.
+        problems.append(
+            f"no GLaDOS install detected under {target} — nothing was "
+            f"checked. Install modes live in directories that are commonly "
+            f"gitignored (.claude/, .gemini/); commit one install mode so "
+            f"this job has an artifact to verify, or run check where the "
+            f"install actually is")
         _emit_check(problems, report_only)
-        return 0 if report_only else 1
+        return 1
 
     # manifest hash: recompute vs vendored
     try:

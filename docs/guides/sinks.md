@@ -43,10 +43,15 @@ Two rules make this safe without freezing the vocabulary:
    or declared in `sinks:`. A typo like `channels: verdict: [slak]` fails the
    install — *"sink 'slak' is not declared"* — so you keep typo-safety without a
    closed enum.
-2. **Delivery is verified, not assumed.** At run time, if an outcome reaches at
-   least one team-visible sink, a failure of any *other* bound sink is recorded
-   as a warning and the run continues. If it reaches **no** team-visible sink,
-   the run emits an `escalation` — an outcome never silently disappears.
+2. **Delivery is verified, not assumed.** At run time, every sink bound to an
+   outcome must actually receive it. A bound sink that fails escalates, however
+   many other sinks got a copy — a verdict that never reached the MR leaves the
+   change looking unreviewed. Reaching only the ledger is not a failure when
+   that is what the manifest declared (`progress`, `decision`, `observation`,
+   or a confessed `visibility-acknowledged: ledger-only`). All of a run's
+   delivery failures ride in **one** escalation, and that escalation is never
+   itself escalated — otherwise one unreachable platform produces an unbounded
+   chain.
 
 Bodies are yours. Everything under a sink name — `channel:`, `format:`,
 `grouping:`, `threads:`, anything — is freeform config the **agent** interprets
@@ -55,15 +60,24 @@ never parses it; it only checks that the declaration is a mapping.
 
 ## Visibility
 
-A declared sink is **team-visible by default** — declaring an external
-destination *is* the visibility act. For a record-only sink (an audit log the
-team doesn't watch), opt out:
+A sink you declare **must state its own visibility**. There is no default:
+`team-visible: true` for a destination the team actually reads,
+`team-visible: false` for a record-only one (an audit log nobody watches).
 
 ```yaml
 sinks:
   audit-log:
     team-visible: false
+  slack:
+    team-visible: true
+    channel: "#code-reviews"
 ```
+
+Omitting the key fails the install. It used to default to *visible*, which
+meant a sink nobody had thought about satisfied the very check that exists to
+stop an outcome disappearing — the silent-default failure this guide warns
+about two sections down. The key is rejected on a **built-in** sink, whose
+visibility is fixed and never read from the body.
 
 A `team-visible: false` sink cannot, by itself, satisfy an outcome's
 visibility requirement — bind a team-visible sink alongside it, or the install

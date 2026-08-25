@@ -828,12 +828,26 @@ class TestManifestTokenAttacks(unittest.TestCase):
         self.assertIn("legder", out)
 
     def test_declared_custom_sink_passes(self):
-        # A team-declared sink, bound alongside a built-in, installs cleanly.
+        # A team-declared sink that states its visibility, bound alongside a
+        # built-in, installs cleanly.
         text = read(EXAMPLE).replace(
             "  verdict:     [mr-comment]", "  verdict:     [mr-comment, slack]")
-        text += '\nsinks:\n  slack:\n    channel: "#code-reviews"\n    format: terse\n'
+        text += ('\nsinks:\n  slack:\n    team-visible: true\n'
+                 '    channel: "#code-reviews"\n    format: terse\n')
         rc, out = install("direct", make_target(text))
         self.assertEqual(rc, 0, "declared custom sink must install:\n" + out)
+
+    def test_declared_sink_without_team_visible_fails(self):
+        # The dangerous direction: a declared sink that says nothing about
+        # visibility used to satisfy the team-visibility invariant by default,
+        # so an outcome no human sees passed the check meant to prevent it.
+        text = read(EXAMPLE).replace(
+            "  verdict:     [mr-comment]", "  verdict:     [mr-comment, slack]")
+        text += '\nsinks:\n  slack:\n    channel: "#code-reviews"\n'
+        rc, out = install("direct", make_target(text))
+        self.assertEqual(rc, 1, "sink without team-visible must fail:\n" + out)
+        self.assertIn("slack", out)
+        self.assertIn("team-visible", out)
 
     def test_undeclared_sink_in_channels_fails(self):
         # Binding a sink that is neither built-in nor declared is a typo/hole.
@@ -845,13 +859,26 @@ class TestManifestTokenAttacks(unittest.TestCase):
         self.assertIn("not declared", out)
 
     def test_custom_team_visible_sink_satisfies_visibility(self):
-        # A declared sink is team-visible by default, so it alone satisfies a
+        # A sink that declares itself team-visible alone satisfies a
         # non-ledger-ok outcome's visibility requirement.
+        text = read(EXAMPLE).replace(
+            "  verdict:     [mr-comment]", "  verdict:     [slack]")
+        text += ('\nsinks:\n  slack:\n    team-visible: true\n'
+                 '    channel: "#code-reviews"\n')
+        rc, out = install("direct", make_target(text))
+        self.assertEqual(rc, 0, "team-visible custom sink must satisfy:\n" + out)
+
+    def test_unstated_visibility_never_satisfies_visibility(self):
+        # And the same binding with the key omitted must not slip through on a
+        # default — it fails, and it fails naming the visibility hole, not just
+        # the missing key.
         text = read(EXAMPLE).replace(
             "  verdict:     [mr-comment]", "  verdict:     [slack]")
         text += '\nsinks:\n  slack:\n    channel: "#code-reviews"\n'
         rc, out = install("direct", make_target(text))
-        self.assertEqual(rc, 0, "team-visible custom sink must satisfy:\n" + out)
+        self.assertEqual(rc, 1, "unstated visibility must not satisfy:\n" + out)
+        self.assertIn("team-visible", out)
+        self.assertIn("no team-visible sink", out)
 
     def test_record_only_sink_alone_fails_visibility(self):
         # team-visible: false opts a sink out; alone on verdict it must fail the
@@ -1019,6 +1046,112 @@ class TestSinkConfig(unittest.TestCase):
                 break
             out.append(line)
         return out
+
+
+class TestInstallVisibility(unittest.TestCase):
+    """A checker that cannot see the thing it checks must say so, and a
+    vendored tree must be able to re-install itself."""
+
+    def test_check_fails_when_no_install_is_detectable(self):
+        # Every install mode lands in a directory a project may gitignore, so
+        # on a fresh CI clone "no install detected" is the shape of a repo
+        # whose compiled artifacts never travel. Returning 0 there turns the
+        # whole job into a pass that read nothing.
+        t = make_target()
+        rc, out = run_cli("check", "--target", t, "--source", REPO,
+                          "--report-only")
+        self.assertEqual(rc, 1, "report-only must still fail:\n" + out)
+        self.assertIn("no GLaDOS install detected", out)
+        rc, out = run_cli("check", "--target", t, "--source", REPO)
+        self.assertEqual(rc, 1, "enforcing mode must fail too:\n" + out)
+
+    def test_check_passes_once_an_install_is_present(self):
+        # The control: the same target, after an install, checks clean. The
+        # failure above must come from invisibility, not from the manifest.
+        t = make_target()
+        self.assertEqual(install("direct", t)[0], 0)
+        rc, out = run_cli("check", "--target", t, "--source", REPO,
+                          "--report-only")
+        self.assertEqual(rc, 0, out)
+
+    def test_vendored_tree_can_reinstall_itself_with_sda(self):
+        # `check` was self-contained but `install` was not: an sda: true repo
+        # died with "pass --source <a full glados checkout>", so the one
+        # command a consumer needs to pick up a re-vendor could not be run
+        # from the repo it was vendored into.
+        manifest = read(EXAMPLE).replace("sda: false", "sda: true")
+        self.assertIn("sda: true", manifest)
+        t = make_target(manifest)
+        self.assertEqual(install("direct", t)[0], 0)
+        vendored = t / ".glados" / "glados.py"
+        self.assertTrue(vendored.is_file())
+        proc = subprocess.run(
+            [sys.executable, str(vendored), "install", "--mode", "direct",
+             "--target", str(t)],
+            capture_output=True, text=True)
+        out = proc.stdout + proc.stderr
+        self.assertEqual(proc.returncode, 0,
+                         "vendored install must need no --source:\n" + out)
+        self.assertTrue((t / ".glados" / "docs" / "standards").is_dir(),
+                        "the sda docs install reads must be vendored")
+
+
+class TestDeliveryAndPanelContract(unittest.TestCase):
+    """Contracts that only exist as compiled text. Assert on what the agent
+    receives, not on the source file."""
+
+    def _core(self, name):
+        t = make_target(read(EXAMPLE))
+        rc, out = install("direct", t)
+        self.assertEqual(rc, 0, out)
+        return read(t / "product-knowledge" / "glados" / f"{name}.md")
+
+    def test_escalation_about_delivery_has_a_floor(self):
+        core = self._core("review-mr")
+        self.assertIn("never itself escalated", core)
+        self.assertIn("One escalation per run", core)
+
+    def test_grouping_values_are_all_defined(self):
+        # The manifest may set any of these; the epilogue defined only one,
+        # so composing `aggregate` + `summary: false` literally yielded
+        # "post nothing".
+        core = self._core("review-mr")
+        for value in ("`aggregate`", "`per-persona`", "`per-finding`"):
+            self.assertIn(value, core)
+        self.assertIn("always produces at least one comment", core)
+
+    def test_address_review_gets_the_root_cause_vocabulary(self):
+        # It uses "symptom patch" and cluster/member as terms of art; the
+        # definitions have to travel with it.
+        core = self._core("address-review")
+        self.assertIn("symptom patch", core)
+        self.assertIn("Does the finding set converge on one cause?", core)
+
+    def test_address_review_states_the_no_synthesis_case(self):
+        # Requiring a consolidated list with no clause for its absence is a
+        # guess waiting to happen — older records and human reviews have no
+        # synthesis at all.
+        core = self._core("address-review")
+        self.assertIn("no synthesis", core)
+
+    def test_blocking_findings_are_refuted_before_the_tally(self):
+        core = self._core("review-mr")
+        self.assertIn("Refute before believing", core)
+        self.assertIn("one fresh agent per blocking finding", core)
+        for outcome in ("confirmed", "refuted", "unconfirmed"):
+            self.assertIn(outcome, core)
+        self.assertIn("never lowered by this step", core)
+
+    def test_refutation_is_invoked_before_the_decision(self):
+        # The module defining the stage is not enough: the compiler appends
+        # module text after the numbered steps, so an agent reading the
+        # workflow in order decides before it ever reaches the definition.
+        # The CORE has to call it, in a step that precedes the decision.
+        core = self._core("review-mr")
+        call = core.index("Refute every `blocking` finding before counting it")
+        self.assertLess(call, core.index("### 8. Decide"))
+        self.assertLess(call, core.index("Refute before believing"),
+                        "the call site must precede the definition")
 
 
 class TestSourceTreeAttacks(unittest.TestCase):
