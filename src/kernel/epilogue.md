@@ -13,7 +13,9 @@ the record rather than omitting it.
    outcome, key decisions (with their decision-rights class), verdicts if any,
    links (MR, issues, commits), and any state keys this run wrote
    (`review.reviewed-head`, `epic.progress` updates, …). If this run was cut
-   short, record how far it got — a partial record beats a missing one.
+   short, record how far it got — a partial record beats a missing one. A
+   record is a screen, not an essay: reasoning that already lives in the
+   published comment or in the diff is not repeated in it.
 2. **Yield check**: compare the recorded `work.base-sha` against the current
    base. If an external edit moved it, emit `yielded (external_edit)` in the
    record, then rebase or release — never force-push over someone else's work.
@@ -22,8 +24,10 @@ the record rather than omitting it.
    scope, outcome, links — and clear this run's entry in `claims.md`, so
    both ride the record commit below.
 4. **Commit the record** on the current working branch:
-   `chore(glados): record <workflow> run`. Review-only runs that must not
-   touch the author's branch commit to the `glados/ledger` branch instead.
+   `chore(glados): record <workflow> run`. Runs that act on a merge request
+   under review — review-mr, address-review — commit their record to the
+   `glados/ledger` branch instead, never to the author's branch: the MR
+   carries the change and the comment, and the ledger carries the trail.
 5. **Publish outcomes**: read `glados.yaml` → `channels:` (which sinks each
    outcome type goes to) and `sinks:` (how each sink behaves). For every
    outcome type this run emitted, deliver it to each bound sink using the

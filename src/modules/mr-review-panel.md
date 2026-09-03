@@ -50,7 +50,8 @@ You have no knowledge of how this change was written — only the brief.
 Your job is to find real problems, not to confirm success.
 
 1. Read the brief, the spec, and the diff. Read surrounding source as needed.
-2. Review strictly through your persona's lens. Cite file + line per finding.
+2. Review strictly through your persona's lens, and review the code: a
+   finding about prose is advisory, one line. Cite file + line per finding.
 3. Classify each finding and choose your verdict using ONLY the severity
    scale, verdict words, and composition rules in the brief.
 4. Before returning, step back from the individual findings: in one line,
@@ -86,9 +87,8 @@ Validation happens at the tally, not on trust in the panelist prompt:
 ### Refute before believing
 
 Validation above checks a verdict's *shape*. Nothing in it checks whether a
-finding is **true**, and a panelist briefed to break the change and told that
-uncertainty is itself blocking will produce confident findings about code that
-is not there. A wrong blocking finding costs more than a missed one: it sends
+finding is **true**, and a panelist briefed to break the change will produce
+confident findings about code that is not there. A wrong blocking finding costs more than a missed one: it sends
 the author to refactor around a defect that does not exist, and it teaches the
 team to skim the next review.
 
@@ -111,8 +111,9 @@ So every `blocking` finding earns its place before the tally counts it:
 - Refutation runs on `blocking` findings. Advisories are cheap to state and
   cheap to decline, and are not worth a seat.
 
-Record each verdict per finding in the run record. A finding that reached the
-MR without one is a process failure worth naming there.
+Record each verdict per finding in the run record, and only there: a refuted
+finding is not mentioned on the merge request. A finding that reached the MR
+without a recorded verdict is a process failure worth naming in the record.
 - The validated objects are the panel's output. They do not become outcomes
   one per persona: tallying them into the single composed `verdict` outcome —
   the per-persona verdicts plus the cycle's composed result — and making the
