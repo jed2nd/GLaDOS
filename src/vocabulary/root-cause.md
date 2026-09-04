@@ -8,6 +8,10 @@ shared cause hides. Neither may be skipped: "the change removes the cause" and
 "the findings do not converge" are *answers*, stated with their reasoning.
 Silence is not an answer.
 
+Both answers belong in the run record. On the merge request the synthesis
+appears only as a consolidated finding, when it produced one; a pass whose
+findings do not converge says nothing about convergence to the author.
+
 **1. Did the change attack the underlying cause?**
 
 Name the underlying cause in one sentence first — the condition in the code

@@ -2,15 +2,20 @@
 
 The panel = the standing lenses + project personas + feature personas.
 
+Every lens reviews the code and the architecture. Prose — comments,
+docstrings, READMEs, commit messages — is advisory territory for all of them:
+a lens that finds a stale sentence fixes it in passing or says so in one
+line, and no lens blocks on one.
+
 **Standing lenses (always seated):**
 
 | Lens | Mandate |
 |------|---------|
 | **UAT** | Does the change actually do what the spec/ticket promises? Exercise it as a user would; verify each acceptance criterion. |
 | **Adversarial** | Attack the change: edge cases, error paths, race conditions, auth/tenancy holes, injection, data loss. |
-| **Standards** | Audit against the project's standards tree — every applicable standard, cited by name. |
-| **Philosophy** | Audit against the project's philosophies — fail-fast, root-cause-not-symptom, and the project's stated values. |
-| **Dead-code** | Hunt leftovers: unused symbols, orphaned files, stale comments/docs, debug artifacts, commented-out code. |
+| **Standards** | Audit the change against the project's standards tree, citing the standard. A breach blocks only when it changes behaviour or crosses a boundary the standard draws; otherwise it is one advisory line. |
+| **Philosophy** | Audit the change's behaviour and structure against the project's philosophies — fail-fast, root-cause-not-symptom, and the project's stated values. |
+| **Dead-code** | Hunt leftovers in the code: unused symbols, orphaned files, debug artifacts, commented-out code. |
 
 **Project personas:** resolve `params.review-panel.personas` from `glados.yaml`;
 load each named definition and seat it with its Responsibilities and Key
